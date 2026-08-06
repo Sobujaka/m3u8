@@ -1,293 +1,274 @@
 <!DOCTYPE html>
 <html lang="bn">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IPTV Player & Live Channel Checker</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #1a1a1a;
-            color: #ffffff;
-            margin: 0;
-            padding: 20px;
-        }
-        .container {
-            max-width: 1000px;
-            margin: 0 auto;
-        }
-        h2 { text-align: center; color: #00ff88; }
-        .controls {
-            background: #2a2a2a;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-        }
-        input[type="file"], button {
-            padding: 10px 15px;
-            border-radius: 5px;
-            border: none;
-            font-size: 16px;
-            margin-right: 10px;
-            cursor: pointer;
-        }
-        button {
-            background-color: #00ff88;
-            color: #1a1a1a;
-            font-weight: bold;
-            transition: 0.3s;
-        }
-        button:disabled { background-color: #555; color: #aaa; cursor: not-allowed; }
-        .status {
-            font-weight: bold;
-            margin-top: 10px;
-            color: #ffcc00;
-        }
-        .main-layout {
-            display: flex;
-            gap: 20px;
-        }
-        .player-section { flex: 2; }
-        .list-section {
-            flex: 1;
-            background: #2a2a2a;
-            padding: 15px;
-            border-radius: 8px;
-            max-height: 500px;
-            overflow-y: auto;
-        }
-        video {
-            width: 100%;
-            background: #000;
-            border-radius: 8px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-        }
-        ul { list-style: none; padding: 0; margin: 0; }
-        li {
-            padding: 10px;
-            background: #3a3a3a;
-            margin-bottom: 5px;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: 0.2s;
-            font-size: 14px;
-            display: flex;
-            justify-content: space-between;
-        }
-        li:hover { background: #4a4a4a; }
-        .dead-chan { color: #ff4d4d; text-decoration: line-through; }
-        .live-chan { color: #00ff88; }
-    </style>
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>M3U Auto-Detecting Editor</title>
+  <link href="https://vjs.zencdn.net/7.20.3/video-js.css" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #121212; color: #fff; padding: 15px; }
+    h2 { text-align: center; margin-bottom: 15px; color: #00e676; }
+    
+    .upload-container {
+      background: #1e1e1e; padding: 15px; border-radius: 8px; margin-bottom: 15px;
+      display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap;
+    }
+    input[type="file"] { background: #2a2a2a; color: #fff; padding: 8px; border-radius: 5px; border: 1px solid #444; }
+
+    /* Loading Status Bar */
+    #status {
+      display: none; background: #263238; color: #80deea; padding: 10px;
+      text-align: center; border-radius: 5px; margin-bottom: 15px; font-weight: bold;
+    }
+
+    .main-layout { display: flex; gap: 15px; height: calc(100vh - 190px); }
+    
+    .left-panel { flex: 1.2; background: #000; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; justify-content: center; }
+    .video-js { width: 100% !important; height: 100% !important; }
+
+    .right-panel { flex: 1; background: #1e1e1e; border-radius: 8px; display: flex; flex-direction: column; padding: 10px; }
+    
+    .controls { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+    .btn { background: #333; color: #fff; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-size: 13px; font-weight: bold; }
+    .btn:hover { background: #444; }
+    .btn-danger { background: #d32f2f; }
+    .btn-danger:hover { background: #f44336; }
+    .btn-success { background: #388e3c; }
+    .btn-success:hover { background: #4caf50; }
+
+    .channel-list { flex: 1; overflow-y: auto; background: #121212; border-radius: 5px; padding: 5px; }
+    .channel-item {
+      display: flex; align-items: center; gap: 10px; padding: 8px; background: #252525;
+      margin-bottom: 5px; border-radius: 5px; cursor: pointer; border: 1px solid transparent;
+    }
+    .channel-item:hover { background: #333; }
+    .channel-item.active { border-color: #00e676; background: #1c3829; }
+    .channel-logo { width: 35px; height: 35px; object-fit: contain; background: #000; border-radius: 4px; }
+    .channel-name { flex: 1; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .checkbox { width: 18px; height: 18px; cursor: pointer; }
+  </style>
 </head>
 <body>
 
-<div class="container">
-    <h2>IPTV Player & Automatic M3U Filter</h2>
-    
-    <div class="controls">
-        <input type="file" id="m3uFile" accept=".m3u,.txt">
-        <button id="startCheckBtn" disabled>চ্যানেল চেক ও ফিল্টার শুরু করুন</button>
-        <div class="status" id="statusText">অনুগ্রহ করে একটি M3U বা TXT ফাইল আপলোড করুন...</div>
+  <h2>M3U Auto-Detecting Playlist Editor</h2>
+
+  <div class="upload-container">
+    <label>M3U ফাইল আপলোড করুন (সর্বোচ্চ ৩টি): </label>
+    <input type="file" id="fileInput" accept=".m3u, .m3u8" multiple>
+  </div>
+
+  <!-- Real-time Checking Status -->
+  <div id="status">চ্যানেল ফিল্টার করা হচ্ছে, অনুগ্রহ করে অপেক্ষা করুন...</div>
+
+  <div class="main-layout">
+    <div class="left-panel">
+      <video id="myPlayer" class="video-js vjs-default-skin" controls preload="auto"></video>
     </div>
 
-    <div class="main-layout">
-        <div class="player-section">
-            <video id="videoPlayer" controls></video>
-            <h3 id="currentTrack" style="margin-top:10px; color:#00ff88;">এখন চলছে: কোনো চ্যানেল সিলেক্ট করা নেই</h3>
-        </div>
+    <div class="right-panel">
+      <div class="controls">
+        <button class="btn btn-danger" onclick="deleteSelected()">Delete Selected</button>
+        <button class="btn btn-danger" onclick="deleteAll()">Delete All</button>
+        <button class="btn" onclick="moveUp()">Up ▲</button>
+        <button class="btn" onclick="moveDown()">Down ▼</button>
+        <button class="btn btn-success" onclick="downloadM3U()">Download M3U</button>
+      </div>
 
-        <div class="list-section">
-            <h3>চ্যানেল সমূহ (<span id="chanCount">0</span>)</h3>
-            <ul id="channelList"></ul>
-        </div>
+      <div class="channel-list" id="channelList">
+        <p style="text-align: center; color: #888; margin-top: 20px;">কোনো M3U ফাইল আপলোড করা হয়নি</p>
+      </div>
     </div>
-</div>
+  </div>
 
-<script>
+  <script src="https://vjs.zencdn.net/7.20.3/video.min.js"></script>
+  <script>
+    let channels = [];
     let rawChannels = [];
-    let validChannels = [];
-    let checkingIndex = 0;
+    let player = videojs('myPlayer');
 
-    const fileInput = document.getElementById('m3uFile');
-    const startBtn = document.getElementById('startCheckBtn');
-    const statusText = document.getElementById('statusText');
-    const channelListUI = document.getElementById('channelList');
-    const chanCountUI = document.getElementById('chanCount');
-    const video = document.getElementById('videoPlayer');
-    const currentTrackText = document.getElementById('currentTrack');
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+      const files = Array.from(e.target.files);
+      if (files.length > 3) {
+        alert("আপনি একসাথে সর্বোচ্চ ৩টি ফাইল আপলোড করতে পারবেন!");
+        this.value = "";
+        return;
+      }
 
-    // M3U ফাইল রিড করা
-    fileInput.addEventListener('change', function(e) {
-        const file = e.target.files[0];
-        if (!file) return;
+      rawChannels = [];
+      channels = [];
+      let filesRead = 0;
 
+      files.forEach(file => {
         const reader = new FileReader();
-        reader.onload = function(evt) {
-            parseM3U(evt.target.result);
+        reader.onload = function(event) {
+          parseM3U(event.target.result);
+          filesRead++;
+          if (filesRead === files.length) {
+            filterAndLoadChannels();
+          }
         };
         reader.readAsText(file);
+      });
     });
 
-    // M3U টেক্সট পার্স করা
-    function parseM3U(text) {
-        rawChannels = [];
-        const lines = text.split('\n');
-        let currentInfo = null;
+    function parseM3U(content) {
+      const lines = content.split('\n');
+      let currentChannel = null;
 
-        for (let i = 0; i < lines.length; i++) {
-            let line = lines[i].trim();
-            if (line.startsWith('#EXTINF:')) {
-                currentInfo = line;
-            } else if (line && !line.startsWith('#')) {
-                if (currentInfo) {
-                    // নাম বের করা
-                    let name = currentInfo.split(',').pop() || "Unknown Channel";
-                    rawChannels.push({ info: currentInfo, url: line, name: name });
-                    currentInfo = null;
-                } else {
-                    // যদি শুধু লিংক থাকে (EXTINF ছাড়া)
-                    rawChannels.push({ info: `#EXTINF:-1,Channel ${rawChannels.length+1}`, url: line, name: `Channel ${rawChannels.length+1}` });
-                }
-            }
-        }
+      lines.forEach(line => {
+        line = line.trim();
+        if (line.startsWith('#EXTINF:')) {
+          currentChannel = {};
+          const logoMatch = line.match(/tvg-logo="([^"]*)"/);
+          currentChannel.logo = logoMatch ? logoMatch[1] : '';
 
-        if (rawChannels.length > 0) {
-            statusText.innerText = `${rawChannels.length}টি চ্যানেল পাওয়া গেছে। চেক শুরু করতে বাটনে ক্লিক করুন।`;
-            startBtn.disabled = false;
-            renderList(rawChannels);
-        } else {
-            statusText.innerText = "ফাইলে কোনো বৈধ চ্যানেল পাওয়া যায়নি!";
-            startBtn.disabled = true;
+          const titleParts = line.split(',');
+          currentChannel.title = titleParts.length > 1 ? titleParts.slice(1).join(',').trim() : 'Unknown Channel';
+          currentChannel.extinf = line;
+          currentChannel.selected = false;
+        } else if (line && !line.startsWith('#') && currentChannel) {
+          currentChannel.url = line;
+          rawChannels.push(currentChannel);
+          currentChannel = null;
         }
+      });
     }
 
-    // UI-তে চ্যানেল লিস্ট দেখানো
-    function renderList(channels) {
-        channelListUI.innerHTML = '';
-        chanCountUI.innerText = channels.length;
-        channels.forEach((chan, index) => {
-            let li = document.createElement('li');
-            li.innerText = chan.name;
-            li.onclick = () => playStream(chan.url, chan.name);
-            li.setAttribute('id', 'chan-' + index);
-            channelListUI.appendChild(li);
-        });
-    }
+    // Auto Detect & Filter Working Channels
+    async function filterAndLoadChannels() {
+      const statusDiv = document.getElementById('status');
+      statusDiv.style.display = 'block';
+      
+      channels = [];
+      let checkedCount = 0;
 
-    // ফিল্টারিং এবং অটো-ডিলিট প্রসেস শুরু
-    startBtn.addEventListener('click', async () => {
-        startBtn.disabled = true;
-        fileInput.disabled = true;
-        validChannels = [];
-        checkingIndex = 0;
-        
-        statusText.innerText = "চ্যানেল যাচাইকরণ চলছে... দয়া করে অপেক্ষা করুন।";
-        await checkNextChannel();
-    });
+      for (let i = 0; i < rawChannels.length; i++) {
+        const ch = rawChannels[i];
+        statusDiv.innerText = `চ্যানেল চেক করা হচ্ছে: ${i + 1}/${rawChannels.length} (সচল পাওয়া গেছে: ${channels.length})`;
 
-    // একটি একটি করে চ্যানেল ব্যাকগ্রাউন্ডে চেক করা
-    async function checkNextChannel() {
-        if (checkingIndex >= rawChannels.length) {
-            endVerification();
-            return;
+        const isWorking = await checkStream(ch.url);
+        if (isWorking) {
+          channels.push(ch);
         }
+      }
 
-        let chan = rawChannels[checkingIndex];
-        let li = document.getElementById('chan-' + checkingIndex);
-        if (li) li.style.background = "#555"; // বর্তমানে চেকিং নির্দেশক
+      statusDiv.style.display = 'none';
+      renderChannels();
+    }
 
-        statusText.innerText = `যাচাই করা হচ্ছে (${checkingIndex + 1}/${rawChannels.length}): ${chan.name}`;
+    // Check Link Health with Timeout
+    function checkStream(url) {
+      return new Promise((resolve) => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000); // ৩ সেকেন্ডের মধ্যে রেসপন্স না দিলে বাদ
 
-        try {
-            // head বা fetch রিকোয়েস্ট দিয়ে চেক করা (Timeout 5 সেকেন্ড)
-            const controller = new AbortController();
-            const id = setTimeout(() => controller.abort(), 5000);
+        fetch(url, { method: 'HEAD', signal: controller.signal, mode: 'no-cors' })
+          .then(() => {
+            clearTimeout(timeoutId);
+            resolve(true);
+          })
+          .catch(() => {
+            clearTimeout(timeoutId);
+            resolve(false);
+          });
+      });
+    }
 
-            const response = await fetch(chan.url, { method: 'HEAD', signal: controller.signal });
-            clearTimeout(id);
+    function renderChannels() {
+      const listContainer = document.getElementById('channelList');
+      listContainer.innerHTML = '';
 
-            if (response.ok) {
-                // সচল চ্যানেল
-                validChannels.push(chan);
-                if (li) {
-                    li.classList.add('live-chan');
-                    li.innerHTML = `${chan.name} <span>✓</span>`;
-                }
-            } else {
-                // অচল চ্যানেল (অটো রিমুভ UI থেকে)
-                if (li) li.remove();
-            }
-        } catch (error) {
-            // এরর বা ডেড লিংক হলে UI থেকে ডিলেট
-            if (li) li.remove();
+      if (channels.length === 0) {
+        listContainer.innerHTML = '<p style="text-align: center; color: #888; margin-top: 20px;">কোনো সচল চ্যানেল পাওয়া যায়নি</p>';
+        return;
+      }
+
+      channels.forEach((channel, index) => {
+        const item = document.createElement('div');
+        item.className = 'channel-item';
+        const fallbackLogo = 'https://via.placeholder.com/35?text=TV';
+
+        item.innerHTML = `
+          <input type="checkbox" class="checkbox" ${channel.selected ? 'checked' : ''} onclick="toggleSelect(event, ${index})">
+          <img src="${channel.logo || fallbackLogo}" class="channel-logo" onerror="this.src='${fallbackLogo}'">
+          <span class="channel-name">${channel.title}</span>
+        `;
+
+        item.onclick = (e) => {
+          if (e.target.tagName !== 'INPUT') {
+            playChannel(channel.url, item);
+          }
+        };
+
+        listContainer.appendChild(item);
+      });
+    }
+
+    function playChannel(url, element) {
+      document.querySelectorAll('.channel-item').forEach(el => el.classList.remove('active'));
+      if(element) element.classList.add('active');
+
+      player.src({
+        src: url,
+        type: url.includes('.m3u8') ? 'application/x-mpegURL' : 'video/mp4'
+      });
+      player.play();
+    }
+
+    function toggleSelect(event, index) {
+      event.stopPropagation();
+      channels[index].selected = event.target.checked;
+    }
+
+    function deleteSelected() {
+      channels = channels.filter(ch => !ch.selected);
+      renderChannels();
+    }
+
+    function deleteAll() {
+      if (confirm("আপনি কি সমস্ত চ্যানেল মুছে ফেলতে চান?")) {
+        channels = [];
+        renderChannels();
+        player.pause();
+      }
+    }
+
+    function moveUp() {
+      for (let i = 1; i < channels.length; i++) {
+        if (channels[i].selected && !channels[i - 1].selected) {
+          [channels[i], channels[i - 1]] = [channels[i - 1], channels[i]];
         }
-
-        checkingIndex++;
-        // লাইভ কাউন্ট আপডেট
-        chanCountUI.innerText = validChannels.length;
-        
-        // পরের চ্যানেল চেকে যাওয়া (অল্প বিরতি দিয়ে যাতে ব্রাউজার ফ্রিজ না হয়)
-        setTimeout(checkNextChannel, 100);
+      }
+      renderChannels();
     }
 
-    // সব চেক শেষ হওয়ার পর নতুন M3U ফাইল ডাউনলোড
-    function endVerification() {
-        statusText.innerText = `চেকিং সম্পন্ন! সচল চ্যানেল: ${validChannels.length} টি। অচলগুলো বাদ দেওয়া হয়েছে।`;
-        renderList(validChannels); // ফাইনাল সচল লিস্ট দেখানো
-
-        if (validChannels.length > 0) {
-            downloadM3U(validChannels);
-        } else {
-            alert("দুঃখিত, কোনো সচল চ্যানেল পাওয়া যায়নি!");
+    function moveDown() {
+      for (let i = channels.length - 2; i >= 0; i--) {
+        if (channels[i].selected && !channels[i + 1].selected) {
+          [channels[i], channels[i + 1]] = [channels[i + 1], channels[i]];
         }
-        
-        startBtn.disabled = false;
-        fileInput.disabled = false;
+      }
+      renderChannels();
     }
 
-    // অটো M3U ফাইল তৈরি ও ডাউনলোড
-    function downloadM3U(channels) {
-        let m3uContent = "#EXTM3U\n";
-        channels.forEach(chan => {
-            m3uContent += chan.info + "\n" + chan.url + "\n";
-        });
+    function downloadM3U() {
+      if (channels.length === 0) {
+        alert("ডাউনলোড করার মতো কোনো চ্যানেল নেই!");
+        return;
+      }
 
-        const blob = new Blob([m3uContent], { type: 'text/plain' });
-        const dataUrl = URL.createObjectURL(blob);
-        
-        const a = document.createElement('a');
-        a.href = dataUrl;
-        a.download = "Live_Channels_Filtered.m3u";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        
-        statusText.innerText += " নতুন ফিল্টার করা M3U ফাইলটি অটো ডাউনলোড হয়েছে।";
+      let m3uContent = "#EXTM3U\n";
+      channels.forEach(ch => {
+        m3uContent += `${ch.extinf}\n${ch.url}\n`;
+      });
+
+      const blob = new Blob([m3uContent], { type: 'text/plain' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'cleaned_playlist.m3u';
+      a.click();
     }
-
-    // IPTV ভিডিও প্লে করার ফাংশন (HLS সাপোর্ট সহ)
-    function playStream(url, name) {
-        currentTrackText.innerText = "এখন চলছে: " + name;
-        if (Hls.isSupported()) {
-            const hls = new Hls();
-            hls.loadSource(url);
-            hls.attachMedia(video);
-            hls.on(Hls.Events.MANIFEST_PARSED, function() {
-                video.play();
-            });
-        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-            // সাফারি ব্রাউজারের নিজস্ব সাপোর্টের জন্য
-            video.src = url;
-            video.addEventListener('loadedmetadata', function() {
-                video.play();
-            });
-        } else {
-            alert("আপনার ব্রাউজারে এই ফরম্যাটটি সাপোর্ট করছে না।");
-        }
-    }
-</script>
-
+  </script>
 </body>
 </html>
