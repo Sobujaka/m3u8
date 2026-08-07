@@ -40,6 +40,8 @@
     .btn-edit:hover { background: #01579b; }
     .btn-name { background: #7b1fa2; color: #fff; }
     .btn-name:hover { background: #4a148c; }
+    .btn-group { background: #d81b60; color: #fff; }
+    .btn-group:hover { background: #880e4f; }
     .btn-select-all { background: #f57c00; color: #fff; }
     .btn-select-all:hover { background: #e65100; }
 
@@ -53,7 +55,9 @@
     }
     .channel-item:hover { background: rgba(255, 255, 255, 0.05); }
     .channel-logo { width: 35px; height: 35px; object-fit: contain; background: #000; border-radius: 4px; }
-    .channel-name { flex: 1; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .channel-title-container { flex: 1; display: flex; align-items: center; gap: 8px; overflow: hidden; }
+    .channel-name { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .group-tag { background: #00e676; color: #000; font-size: 11px; font-weight: bold; padding: 2px 6px; border-radius: 4px; white-space: nowrap; }
     .checkbox { width: 18px; height: 18px; cursor: pointer; }
 
     /* Edit Box Container */
@@ -134,8 +138,14 @@
         line = line.trim();
         if (line.startsWith('#EXTINF:')) {
           currentChannel = {};
+          
+          // extract logo
           const logoMatch = line.match(/tvg-logo="([^"]*)"/);
           currentChannel.logo = logoMatch ? logoMatch[1] : '';
+
+          // extract group-title
+          const groupMatch = line.match(/group-title="([^"]*)"/);
+          currentChannel.group = groupMatch ? groupMatch[1] : '';
 
           const titleParts = line.split(',');
           currentChannel.title = titleParts.length > 1 ? titleParts.slice(1).join(',').trim() : 'Unknown Channel';
@@ -203,14 +213,19 @@
         wrapper.id = `channel-wrapper-${index}`;
 
         const fallbackLogo = 'https://via.placeholder.com/35?text=TV';
+        const groupTagHtml = channel.group ? `<span class="group-tag" id="group-tag-${index}">${channel.group}</span>` : `<span class="group-tag" id="group-tag-${index}" style="display:none;"></span>`;
 
         wrapper.innerHTML = `
           <div class="channel-item">
             <button class="btn btn-edit" onclick="toggleEditBox(event, ${index}, 'image')">Edit</button>
             <button class="btn btn-name" onclick="toggleEditBox(event, ${index}, 'name')">Name</button>
+            <button class="btn btn-group" onclick="toggleEditBox(event, ${index}, 'group')">Group</button>
             <input type="checkbox" class="checkbox" ${channel.selected ? 'checked' : ''} onclick="toggleSelect(event, ${index})">
             <img src="${channel.logo || fallbackLogo}" class="channel-logo" id="logo-img-${index}" onerror="this.src='${fallbackLogo}'">
-            <span class="channel-name" id="channel-name-${index}">${channel.title}</span>
+            <div class="channel-title-container">
+              <span class="channel-name" id="channel-name-${index}">${channel.title}</span>
+              ${groupTagHtml}
+            </div>
           </div>
           <div class="edit-box" id="edit-box-${index}">
             <input type="text" id="edit-input-${index}" placeholder="">
@@ -251,6 +266,9 @@
       } else if (mode === 'name') {
         input.placeholder = 'নতুন চ্যানেলের নাম দিন...';
         saveBtn.onclick = (e) => saveName(e, index);
+      } else if (mode === 'group') {
+        input.placeholder = 'গ্রুপ টাইটেল লিখুন...';
+        saveBtn.onclick = (e) => saveGroup(e, index);
       }
 
       input.focus();
@@ -285,7 +303,6 @@
       if (newName) {
         channels[index].title = newName;
 
-        // EXTINF লাইনের কমার পরের অংশ আপডেট করা
         const extinfParts = channels[index].extinf.split(',');
         if (extinfParts.length > 1) {
           extinfParts[extinfParts.length - 1] = ' ' + newName;
@@ -296,6 +313,30 @@
 
         const nameSpan = document.getElementById(`channel-name-${index}`);
         if (nameSpan) nameSpan.innerText = newName;
+      }
+
+      document.getElementById(`edit-box-${index}`).style.display = 'none';
+    }
+
+    function saveGroup(event, index) {
+      event.stopPropagation();
+      const input = document.getElementById(`edit-input-${index}`);
+      const newGroup = input.value.trim();
+
+      if (newGroup) {
+        channels[index].group = newGroup;
+
+        if (channels[index].extinf.includes('group-title="')) {
+          channels[index].extinf = channels[index].extinf.replace(/group-title="[^"]*"/, `group-title="${newGroup}"`);
+        } else {
+          channels[index].extinf = channels[index].extinf.replace('#EXTINF:-1', `#EXTINF:-1 group-title="${newGroup}"`);
+        }
+
+        const groupTag = document.getElementById(`group-tag-${index}`);
+        if (groupTag) {
+          groupTag.innerText = newGroup;
+          groupTag.style.display = 'inline-block';
+        }
       }
 
       document.getElementById(`edit-box-${index}`).style.display = 'none';
