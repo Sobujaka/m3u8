@@ -29,7 +29,7 @@
 
     .right-panel { flex: 1; background: #1e1e1e; border-radius: 8px; display: flex; flex-direction: column; padding: 10px; }
     
-    .controls { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+    .controls { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; align-items: center; }
     .btn { background: #333; color: #fff; border: none; padding: 6px 10px; border-radius: 5px; cursor: pointer; font-size: 13px; font-weight: bold; }
     .btn:hover { background: #444; }
     .btn-danger { background: #d32f2f; }
@@ -37,7 +37,11 @@
     .btn-success { background: #388e3c; }
     .btn-success:hover { background: #4caf50; }
     .btn-edit { background: #0288d1; color: #fff; }
-    .btn-edit:hover { background: #0288d1; }
+    .btn-edit:hover { background: #01579b; }
+    .btn-name { background: #7b1fa2; color: #fff; }
+    .btn-name:hover { background: #4a148c; }
+    .btn-select-all { background: #f57c00; color: #fff; }
+    .btn-select-all:hover { background: #e65100; }
 
     .channel-list { flex: 1; overflow-y: auto; background: #121212; border-radius: 5px; padding: 5px; }
     .channel-item-wrapper {
@@ -80,6 +84,7 @@
 
     <div class="right-panel">
       <div class="controls">
+        <button class="btn btn-select-all" id="selectAllBtn" onclick="toggleSelectAll()">Select All</button>
         <button class="btn btn-danger" onclick="deleteSelected()">Delete Selected</button>
         <button class="btn" onclick="moveUp()">Up ▲</button>
         <button class="btn" onclick="moveDown()">Down ▼</button>
@@ -96,6 +101,7 @@
   <script>
     let channels = [];
     let rawChannels = [];
+    let isAllSelected = false;
     let player = videojs('myPlayer');
 
     document.getElementById('fileInput').addEventListener('change', function(e) {
@@ -117,7 +123,6 @@
         reader.readAsText(file);
       });
 
-      // রিসেট ফাইল ইনপুট যেন একই ফাইল পুনরায় সিলেক্ট করলেও কাজ করে
       this.value = "";
     });
 
@@ -144,7 +149,6 @@
       });
     }
 
-    // Auto Detect & Append Working Channels to existing array
     async function filterAndAppendChannels() {
       const statusDiv = document.getElementById('status');
       statusDiv.style.display = 'block';
@@ -161,14 +165,12 @@
         }
       }
 
-      // আগের চ্যানেলগুলোর নিচে নতুন চ্যানেল যুক্ত করা হলো
       channels = channels.concat(newWorkingChannels);
 
       statusDiv.style.display = 'none';
       renderChannels();
     }
 
-    // Check Link Health with Timeout
     function checkStream(url) {
       return new Promise((resolve) => {
         const controller = new AbortController();
@@ -204,14 +206,15 @@
 
         wrapper.innerHTML = `
           <div class="channel-item">
-            <button class="btn btn-edit" onclick="toggleEditBox(event, ${index})">Edit</button>
+            <button class="btn btn-edit" onclick="toggleEditBox(event, ${index}, 'image')">Edit</button>
+            <button class="btn btn-name" onclick="toggleEditBox(event, ${index}, 'name')">Name</button>
             <input type="checkbox" class="checkbox" ${channel.selected ? 'checked' : ''} onclick="toggleSelect(event, ${index})">
             <img src="${channel.logo || fallbackLogo}" class="channel-logo" id="logo-img-${index}" onerror="this.src='${fallbackLogo}'">
-            <span class="channel-name">${channel.title}</span>
+            <span class="channel-name" id="channel-name-${index}">${channel.title}</span>
           </div>
           <div class="edit-box" id="edit-box-${index}">
-            <input type="text" id="edit-input-${index}" placeholder="নতুন ইমেজের লিংক দিন...">
-            <button class="btn btn-success" onclick="saveLogo(event, ${index})">Save</button>
+            <input type="text" id="edit-input-${index}" placeholder="">
+            <button class="btn btn-success" id="edit-save-btn-${index}">Save</button>
           </div>
         `;
 
@@ -223,20 +226,34 @@
 
         listContainer.appendChild(wrapper);
       });
+
+      updateSelectAllButtonText();
     }
 
-    function toggleEditBox(event, index) {
+    function toggleEditBox(event, index, mode) {
       event.stopPropagation();
       const editBox = document.getElementById(`edit-box-${index}`);
       const input = document.getElementById(`edit-input-${index}`);
-      
-      if (editBox.style.display === 'flex') {
+      const saveBtn = document.getElementById(`edit-save-btn-${index}`);
+
+      if (editBox.style.display === 'flex' && editBox.dataset.mode === mode) {
         editBox.style.display = 'none';
-      } else {
-        editBox.style.display = 'flex';
-        input.value = ''; // আগে থেকে লিংক থাকলেও ইনপুট বক্স খালি থাকবে
-        input.focus();
+        return;
       }
+
+      editBox.style.display = 'flex';
+      editBox.dataset.mode = mode;
+      input.value = '';
+
+      if (mode === 'image') {
+        input.placeholder = 'নতুন ইমেজের লিংক দিন...';
+        saveBtn.onclick = (e) => saveLogo(e, index);
+      } else if (mode === 'name') {
+        input.placeholder = 'নতুন চ্যানেলের নাম দিন...';
+        saveBtn.onclick = (e) => saveName(e, index);
+      }
+
+      input.focus();
     }
 
     function saveLogo(event, index) {
@@ -247,16 +264,38 @@
       if (newLogoUrl) {
         channels[index].logo = newLogoUrl;
 
-        // update M3U EXTINF text
         if (channels[index].extinf.includes('tvg-logo="')) {
           channels[index].extinf = channels[index].extinf.replace(/tvg-logo="[^"]*"/, `tvg-logo="${newLogoUrl}"`);
         } else {
           channels[index].extinf = channels[index].extinf.replace('#EXTINF:-1', `#EXTINF:-1 tvg-logo="${newLogoUrl}"`);
         }
 
-        // DOM update
         const img = document.getElementById(`logo-img-${index}`);
         if (img) img.src = newLogoUrl;
+      }
+
+      document.getElementById(`edit-box-${index}`).style.display = 'none';
+    }
+
+    function saveName(event, index) {
+      event.stopPropagation();
+      const input = document.getElementById(`edit-input-${index}`);
+      const newName = input.value.trim();
+
+      if (newName) {
+        channels[index].title = newName;
+
+        // EXTINF লাইনের কমার পরের অংশ আপডেট করা
+        const extinfParts = channels[index].extinf.split(',');
+        if (extinfParts.length > 1) {
+          extinfParts[extinfParts.length - 1] = ' ' + newName;
+          channels[index].extinf = extinfParts.join(',');
+        } else {
+          channels[index].extinf += ',' + newName;
+        }
+
+        const nameSpan = document.getElementById(`channel-name-${index}`);
+        if (nameSpan) nameSpan.innerText = newName;
       }
 
       document.getElementById(`edit-box-${index}`).style.display = 'none';
@@ -276,6 +315,24 @@
     function toggleSelect(event, index) {
       event.stopPropagation();
       channels[index].selected = event.target.checked;
+      updateSelectAllButtonText();
+    }
+
+    function toggleSelectAll() {
+      if (channels.length === 0) return;
+
+      isAllSelected = !isAllSelected;
+      channels.forEach(ch => ch.selected = isAllSelected);
+      renderChannels();
+    }
+
+    function updateSelectAllButtonText() {
+      const btn = document.getElementById('selectAllBtn');
+      if (!btn) return;
+      
+      const allSelected = channels.length > 0 && channels.every(ch => ch.selected);
+      isAllSelected = allSelected;
+      btn.innerText = allSelected ? 'Deselect All' : 'Select All';
     }
 
     function deleteSelected() {
