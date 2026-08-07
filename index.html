@@ -30,23 +30,35 @@
     .right-panel { flex: 1; background: #1e1e1e; border-radius: 8px; display: flex; flex-direction: column; padding: 10px; }
     
     .controls { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
-    .btn { background: #333; color: #fff; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-size: 13px; font-weight: bold; }
+    .btn { background: #333; color: #fff; border: none; padding: 6px 10px; border-radius: 5px; cursor: pointer; font-size: 13px; font-weight: bold; }
     .btn:hover { background: #444; }
     .btn-danger { background: #d32f2f; }
     .btn-danger:hover { background: #f44336; }
     .btn-success { background: #388e3c; }
     .btn-success:hover { background: #4caf50; }
+    .btn-edit { background: #0288d1; color: #fff; }
+    .btn-edit:hover { background: #0288d1; }
 
     .channel-list { flex: 1; overflow-y: auto; background: #121212; border-radius: 5px; padding: 5px; }
-    .channel-item {
-      display: flex; align-items: center; gap: 10px; padding: 8px; background: #252525;
-      margin-bottom: 5px; border-radius: 5px; cursor: pointer; border: 1px solid transparent;
+    .channel-item-wrapper {
+      display: flex; flex-direction: column; background: #252525; margin-bottom: 5px; border-radius: 5px; border: 1px solid transparent;
     }
-    .channel-item:hover { background: #333; }
-    .channel-item.active { border-color: #00e676; background: #1c3829; }
+    .channel-item-wrapper.active { border-color: #00e676; background: #1c3829; }
+    .channel-item {
+      display: flex; align-items: center; gap: 8px; padding: 8px; cursor: pointer;
+    }
+    .channel-item:hover { background: rgba(255, 255, 255, 0.05); }
     .channel-logo { width: 35px; height: 35px; object-fit: contain; background: #000; border-radius: 4px; }
     .channel-name { flex: 1; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .checkbox { width: 18px; height: 18px; cursor: pointer; }
+
+    /* Edit Box Container */
+    .edit-box {
+      display: none; gap: 5px; padding: 5px 8px 8px 8px; background: #1a1a1a; border-top: 1px solid #333;
+    }
+    .edit-box input[type="text"] {
+      flex: 1; padding: 6px; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 4px; font-size: 12px;
+    }
   </style>
 </head>
 <body>
@@ -54,7 +66,7 @@
   <h2>M3U Auto-Detecting Playlist Editor</h2>
 
   <div class="upload-container">
-    <label>M3U ফাইল আপলোড করুন (সর্বোচ্চ ৩টি): </label>
+    <label>M3U ফাইল সিলেক্ট করুন: </label>
     <input type="file" id="fileInput" accept=".m3u, .m3u8" multiple>
   </div>
 
@@ -88,14 +100,9 @@
 
     document.getElementById('fileInput').addEventListener('change', function(e) {
       const files = Array.from(e.target.files);
-      if (files.length > 3) {
-        alert("আপনি একসাথে সর্বোচ্চ ৩টি ফাইল আপলোড করতে পারবেন!");
-        this.value = "";
-        return;
-      }
+      if (files.length === 0) return;
 
       rawChannels = [];
-      channels = [];
       let filesRead = 0;
 
       files.forEach(file => {
@@ -104,11 +111,14 @@
           parseM3U(event.target.result);
           filesRead++;
           if (filesRead === files.length) {
-            filterAndLoadChannels();
+            filterAndAppendChannels();
           }
         };
         reader.readAsText(file);
       });
+
+      // রিসেট ফাইল ইনপুট যেন একই ফাইল পুনরায় সিলেক্ট করলেও কাজ করে
+      this.value = "";
     });
 
     function parseM3U(content) {
@@ -134,22 +144,25 @@
       });
     }
 
-    // Auto Detect & Filter Working Channels
-    async function filterAndLoadChannels() {
+    // Auto Detect & Append Working Channels to existing array
+    async function filterAndAppendChannels() {
       const statusDiv = document.getElementById('status');
       statusDiv.style.display = 'block';
       
-      channels = [];
+      const newWorkingChannels = [];
 
       for (let i = 0; i < rawChannels.length; i++) {
         const ch = rawChannels[i];
-        statusDiv.innerText = `চ্যানেল চেক করা হচ্ছে: ${i + 1}/${rawChannels.length} (সচল পাওয়া গেছে: ${channels.length})`;
+        statusDiv.innerText = `চ্যানেল চেক করা হচ্ছে: ${i + 1}/${rawChannels.length} (নতুন সচল: ${newWorkingChannels.length})`;
 
         const isWorking = await checkStream(ch.url);
         if (isWorking) {
-          channels.push(ch);
+          newWorkingChannels.push(ch);
         }
       }
+
+      // আগের চ্যানেলগুলোর নিচে নতুন চ্যানেল যুক্ত করা হলো
+      channels = channels.concat(newWorkingChannels);
 
       statusDiv.style.display = 'none';
       renderChannels();
@@ -183,28 +196,74 @@
       }
 
       channels.forEach((channel, index) => {
-        const item = document.createElement('div');
-        item.className = 'channel-item';
+        const wrapper = document.createElement('div');
+        wrapper.className = 'channel-item-wrapper';
+        wrapper.id = `channel-wrapper-${index}`;
+
         const fallbackLogo = 'https://via.placeholder.com/35?text=TV';
 
-        item.innerHTML = `
-          <input type="checkbox" class="checkbox" ${channel.selected ? 'checked' : ''} onclick="toggleSelect(event, ${index})">
-          <img src="${channel.logo || fallbackLogo}" class="channel-logo" onerror="this.src='${fallbackLogo}'">
-          <span class="channel-name">${channel.title}</span>
+        wrapper.innerHTML = `
+          <div class="channel-item">
+            <button class="btn btn-edit" onclick="toggleEditBox(event, ${index})">Edit</button>
+            <input type="checkbox" class="checkbox" ${channel.selected ? 'checked' : ''} onclick="toggleSelect(event, ${index})">
+            <img src="${channel.logo || fallbackLogo}" class="channel-logo" id="logo-img-${index}" onerror="this.src='${fallbackLogo}'">
+            <span class="channel-name">${channel.title}</span>
+          </div>
+          <div class="edit-box" id="edit-box-${index}">
+            <input type="text" id="edit-input-${index}" placeholder="নতুন ইমেজের লিংক দিন...">
+            <button class="btn btn-success" onclick="saveLogo(event, ${index})">Save</button>
+          </div>
         `;
 
-        item.onclick = (e) => {
-          if (e.target.tagName !== 'INPUT') {
-            playChannel(channel.url, item);
+        wrapper.querySelector('.channel-item').onclick = (e) => {
+          if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'BUTTON') {
+            playChannel(channel.url, wrapper);
           }
         };
 
-        listContainer.appendChild(item);
+        listContainer.appendChild(wrapper);
       });
     }
 
+    function toggleEditBox(event, index) {
+      event.stopPropagation();
+      const editBox = document.getElementById(`edit-box-${index}`);
+      const input = document.getElementById(`edit-input-${index}`);
+      
+      if (editBox.style.display === 'flex') {
+        editBox.style.display = 'none';
+      } else {
+        editBox.style.display = 'flex';
+        input.value = ''; // আগে থেকে লিংক থাকলেও ইনপুট বক্স খালি থাকবে
+        input.focus();
+      }
+    }
+
+    function saveLogo(event, index) {
+      event.stopPropagation();
+      const input = document.getElementById(`edit-input-${index}`);
+      const newLogoUrl = input.value.trim();
+
+      if (newLogoUrl) {
+        channels[index].logo = newLogoUrl;
+
+        // update M3U EXTINF text
+        if (channels[index].extinf.includes('tvg-logo="')) {
+          channels[index].extinf = channels[index].extinf.replace(/tvg-logo="[^"]*"/, `tvg-logo="${newLogoUrl}"`);
+        } else {
+          channels[index].extinf = channels[index].extinf.replace('#EXTINF:-1', `#EXTINF:-1 tvg-logo="${newLogoUrl}"`);
+        }
+
+        // DOM update
+        const img = document.getElementById(`logo-img-${index}`);
+        if (img) img.src = newLogoUrl;
+      }
+
+      document.getElementById(`edit-box-${index}`).style.display = 'none';
+    }
+
     function playChannel(url, element) {
-      document.querySelectorAll('.channel-item').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.channel-item-wrapper').forEach(el => el.classList.remove('active'));
       if(element) element.classList.add('active');
 
       player.src({
@@ -251,7 +310,7 @@
       }
 
       let fileName = prompt("ফাইলটির নাম লিখুন (এক্সটেনশন ছাড়া):", "my_playlist");
-      if (!fileName) return; // ইউজার ক্যান্সেল করলে ডাউনলোড হবে না
+      if (!fileName) return;
 
       fileName = fileName.trim();
       if (!fileName.endsWith('.m3u')) {
