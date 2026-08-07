@@ -69,10 +69,9 @@
     <div class="right-panel">
       <div class="controls">
         <button class="btn btn-danger" onclick="deleteSelected()">Delete Selected</button>
-        <button class="btn btn-danger" onclick="deleteAll()">Delete All</button>
         <button class="btn" onclick="moveUp()">Up ▲</button>
         <button class="btn" onclick="moveDown()">Down ▼</button>
-        <button class="btn btn-success" onclick="downloadM3U()">Download M3U</button>
+        <button class="btn btn-success" onclick="downloadSelected()">Download Selected</button>
       </div>
 
       <div class="channel-list" id="channelList">
@@ -141,7 +140,6 @@
       statusDiv.style.display = 'block';
       
       channels = [];
-      let checkedCount = 0;
 
       for (let i = 0; i < rawChannels.length; i++) {
         const ch = rawChannels[i];
@@ -161,7 +159,7 @@
     function checkStream(url) {
       return new Promise((resolve) => {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000); // ৩ সেকেন্ডের মধ্যে রেসপন্স না দিলে বাদ
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
 
         fetch(url, { method: 'HEAD', signal: controller.signal, mode: 'no-cors' })
           .then(() => {
@@ -226,14 +224,6 @@
       renderChannels();
     }
 
-    function deleteAll() {
-      if (confirm("আপনি কি সমস্ত চ্যানেল মুছে ফেলতে চান?")) {
-        channels = [];
-        renderChannels();
-        player.pause();
-      }
-    }
-
     function moveUp() {
       for (let i = 1; i < channels.length; i++) {
         if (channels[i].selected && !channels[i - 1].selected) {
@@ -252,21 +242,31 @@
       renderChannels();
     }
 
-    function downloadM3U() {
-      if (channels.length === 0) {
-        alert("ডাউনলোড করার মতো কোনো চ্যানেল নেই!");
+    function downloadSelected() {
+      const selectedChannels = channels.filter(ch => ch.selected);
+
+      if (selectedChannels.length === 0) {
+        alert("ডাউনলোড করার জন্য কোনো চ্যানেল সিলেক্ট করা হয়নি! অনুগ্রহ করে চেকবোক্সে টিক দিন।");
         return;
       }
 
+      let fileName = prompt("ফাইলটির নাম লিখুন (এক্সটেনশন ছাড়া):", "my_playlist");
+      if (!fileName) return; // ইউজার ক্যান্সেল করলে ডাউনলোড হবে না
+
+      fileName = fileName.trim();
+      if (!fileName.endsWith('.m3u')) {
+        fileName += '.m3u';
+      }
+
       let m3uContent = "#EXTM3U\n";
-      channels.forEach(ch => {
+      selectedChannels.forEach(ch => {
         m3uContent += `${ch.extinf}\n${ch.url}\n`;
       });
 
       const blob = new Blob([m3uContent], { type: 'text/plain' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = 'cleaned_playlist.m3u';
+      a.download = fileName;
       a.click();
     }
   </script>
