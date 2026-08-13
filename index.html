@@ -14,7 +14,10 @@
       background: #1e1e1e; padding: 15px; border-radius: 8px; margin-bottom: 15px;
       display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap;
     }
-    input[type="file"] { background: #2a2a2a; color: #fff; padding: 8px; border-radius: 5px; border: 1px solid #444; }
+    input[type="file"], input[type="url"] { 
+      background: #2a2a2a; color: #fff; padding: 8px 12px; border-radius: 5px; border: 1px solid #444; font-size: 14px;
+    }
+    input[type="url"] { width: 300px; }
 
     /* Loading Status Bar */
     #status {
@@ -76,6 +79,12 @@
   <div class="upload-container">
     <label>M3U ফাইল সিলেক্ট করুন: </label>
     <input type="file" id="fileInput" accept=".m3u, .m3u8" multiple>
+    
+    <span style="color: #888; font-weight: bold;">অথবা</span>
+
+    <!-- নতুন লিংক দেওয়ার ইনপুট অপশন -->
+    <input type="url" id="urlInput" placeholder="M3U URL লিংক পেস্ট করুন...">
+    <button class="btn btn-success" onclick="loadFromUrl()">লোড করুন</button>
   </div>
 
   <!-- Real-time Checking Status -->
@@ -96,7 +105,7 @@
       </div>
 
       <div class="channel-list" id="channelList">
-        <p style="text-align: center; color: #888; margin-top: 20px;">কোনো M3U ফাইল আপলোড করা হয়নি</p>
+        <p style="text-align: center; color: #888; margin-top: 20px;">কোনো M3U ফাইল বা লিংক লোড করা হয়নি</p>
       </div>
     </div>
   </div>
@@ -129,6 +138,36 @@
 
       this.value = "";
     });
+
+    // লিংক থেকে M3U প্লেলিস্ট লোড করার ফাংশন
+    async function loadFromUrl() {
+      const urlInput = document.getElementById('urlInput');
+      const url = urlInput.value.trim();
+
+      if (!url) {
+        alert("অনুগ্রহ করে একটি বৈধ M3U URL লিংক দিন!");
+        return;
+      }
+
+      const statusDiv = document.getElementById('status');
+      statusDiv.style.display = 'block';
+      statusDiv.innerText = 'লিংক থেকে প্লেলিস্ট ডাউনলোড করা হচ্ছে...';
+
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Network response was not ok');
+        
+        const content = await response.text();
+        rawChannels = [];
+        parseM3U(content);
+        
+        urlInput.value = '';
+        await filterAndAppendChannels();
+      } catch (error) {
+        alert("লিংক থেকে ডেটা লোড করতে সমস্যা হয়েছে! CORS নীতি অথবা সার্ভার ইস্যু থাকতে পারে।");
+        statusDiv.style.display = 'none';
+      }
+    }
 
     function parseM3U(content) {
       const lines = content.split('\n');
