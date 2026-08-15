@@ -82,12 +82,10 @@
     
     <span style="color: #888; font-weight: bold;">অথবা</span>
 
-    <!-- নতুন লিংক দেওয়ার ইনপুট অপশন -->
     <input type="url" id="urlInput" placeholder="M3U URL লিংক পেস্ট করুন...">
     <button class="btn btn-success" onclick="loadFromUrl()">লোড করুন</button>
   </div>
 
-  <!-- Real-time Checking Status -->
   <div id="status">চ্যানেল ফিল্টার করা হচ্ছে, অনুগ্রহ করে অপেক্ষা করুন...</div>
 
   <div class="main-layout">
@@ -139,7 +137,6 @@
       this.value = "";
     });
 
-    // লিংক থেকে M3U প্লেলিস্ট লোড করার ফাংশন
     async function loadFromUrl() {
       const urlInput = document.getElementById('urlInput');
       const url = urlInput.value.trim();
@@ -178,17 +175,29 @@
         if (line.startsWith('#EXTINF:')) {
           currentChannel = {};
           
-          // extract logo
           const logoMatch = line.match(/tvg-logo="([^"]*)"/);
           currentChannel.logo = logoMatch ? logoMatch[1] : '';
 
-          // extract group-title
           const groupMatch = line.match(/group-title="([^"]*)"/);
           currentChannel.group = groupMatch ? groupMatch[1] : '';
 
           const titleParts = line.split(',');
-          currentChannel.title = titleParts.length > 1 ? titleParts.slice(1).join(',').trim() : 'Unknown Channel';
-          currentChannel.extinf = line;
+          let rawTitle = titleParts.length > 1 ? titleParts.slice(1).join(',').trim() : '';
+
+          // নাম ২০ ক্যারেক্টারের বেশি হলে নাম রিমুভ (খালি) করা হবে
+          if (rawTitle.length > 20) {
+            currentChannel.title = '';
+            // extinf লাইনের থেকেও নাম সরিয়ে নেওয়া হচ্ছে
+            if (titleParts.length > 1) {
+              currentChannel.extinf = titleParts[0] + ',';
+            } else {
+              currentChannel.extinf = line;
+            }
+          } else {
+            currentChannel.title = rawTitle || 'Unknown Channel';
+            currentChannel.extinf = line;
+          }
+
           currentChannel.selected = false;
         } else if (line && !line.startsWith('#') && currentChannel) {
           currentChannel.url = line;
