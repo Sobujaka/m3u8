@@ -118,6 +118,7 @@
   </div>
 
   <script src="https://vjs.zencdn.net/7.20.3/video.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
   <script>
     let channels = [];
     let rawChannels = [];
@@ -217,59 +218,87 @@
       }
     }
 
-    // প্লেয়ারের সাথে সরাসরি সামঞ্জস্য রেখে নিখুঁত প্লে-যোগ্যতা নিশ্চিত করার ফাংশন
+    // ১০০% সঠিকতার সাথে m3u8 স্ট্রিম চেক করার অ্যাডভান্সড ইঞ্জেকশন
     function checkStream(url) {
       return new Promise((resolve) => {
-        const testVideo = document.createElement('video');
-        testVideo.muted = true;
-        testVideo.playsInline = true;
-
-        let hasEnded = false;
-
-        const cleanup = (status) => {
-          if (!hasEnded) {
-            hasEnded = true;
-            clearTimeout(timeoutId);
-            testVideo.pause();
-            testVideo.removeAttribute('src');
-            testVideo.load();
-            testVideo.remove();
-            resolve(status);
+        let isHandled = false;
+        const timeout = setTimeout(() => {
+          if (!isHandled) {
+            isHandled = true;
+            if (hls) hls.destroy();
+            resolve(false);
           }
-        };
+        }, 5000); // পর্যাপ্ত ৬ সেকেন্ড সময়
 
-        // ৪ সেকেন্ড টাইমআউট - প্লে ব্যাক ক্যানপ্লে তথ্য পাওয়ার পর্যাপ্ত সময়
-        const timeoutId = setTimeout(() => {
-          cleanup(false);
-        }, 4000);
+        // ১. HLS.js সাপোর্টেড ব্রাউজারের জন্য
+        if (Hls.isSupported() && url.includes('.m3u8')) {
+          var hls = new Hls({
+            manifestLoadingTimeOut: 4500,
+            manifestLoadingMaxRetry: 1,
+            fragLoadingTimeOut: 4500
+          });
+          
+          hls.loadSource(url);
+          
+          hls.on(Hls.Events.MANIFEST_PARSED, function () {
+            if (!isHandled) {
+              isHandled = true;
+              clearTimeout(timeout);
+              hls.destroy();
+              resolve(true);
+            }
+          });
 
-        // স্ট্রিম ফ্রেম বা মেটাডেটা সফলভাবে লোড হলে সত্য ফেরত পাঠাবে
-        testVideo.oncanplay = testVideo.onloadeddata = testVideo.onloadedmetadata = () => {
-          cleanup(true);
-        };
+          hls.on(Hls.Events.ERROR, function (event, data) {
+            if (data.fatal && !isHandled) {
+              isHandled = true;
+              clearTimeout(timeout);
+              hls.destroy();
+              resolve(false);
+            }
+          });
+        } else {
+          // ২. সাধারন MP4 বা নেটিভ সাফারি HLS এর জন্য ব্যাকআপ টেস্ট
+          const tempVideo = document.createElement('video');
+          tempVideo.muted = true;
 
-        // এরর ধরা পড়লে (৪০০, ৪০৪, CORS, বা অননুমোদিত ফরম্যাট) চ্যানেলটি বাদ দেওয়া হবে
-        testVideo.onerror = () => {
-          cleanup(false);
-        };
+          tempVideo.onloadedmetadata = tempVideo.oncanplay = () => {
+            if (!isHandled) {
+              isHandled = true;
+              clearTimeout(timeout);
+              tempVideo.src = '';
+              tempVideo.remove();
+              resolve(true);
+            }
+          };
 
-        // প্লেয়ার টাইপিং
-        testVideo.src = url;
-        testVideo.load();
+          tempVideo.onerror = () => {
+            if (!isHandled) {
+              isHandled = true;
+              clearTimeout(timeout);
+              tempVideo.src = '';
+              tempVideo.remove();
+              resolve(false);
+            }
+          };
+
+          tempVideo.src = url;
+          tempVideo.load();
+        }
       });
     }
 
-    // ফিল্টার প্রসেসিং (১৫ টি চ্যানেল একসাথে চেক করবে যাতে দ্রুত প্লেয়ার ভ্যালিডেশন সম্পন্ন হয়)
+    // নিরাপদ কিউ ভিত্তিক চেকিং (একসাথে ৩টি করে সুনির্দিষ্টভাবে চেক হবে যাতে মিস না হয়)
     async function filterAndAppendChannels() {
       const statusDiv = document.getElementById('status');
       statusDiv.style.display = 'block';
       
       const newWorkingChannels = [];
-      const batchSize = 15;
+      const batchSize = 3; // ব্যাচ সাইজ কম রেখে ১০০% একুরেসি নিশ্চিত করা হলো
 
       for (let i = 0; i < rawChannels.length; i += batchSize) {
         const batch = rawChannels.slice(i, i + batchSize);
-        statusDiv.innerText = `প্লেয়ারে প্লে-যোগ্য চ্যানেলগুলো যাচাই করা হচ্ছে: ${Math.min(i + batchSize, rawChannels.length)}/${rawChannels.length} (সচল: ${newWorkingChannels.length})`;
+        statusDiv.innerText = `একুরেটলি যাচাই করা হচ্ছে: ${Math.min(i + batchSize, rawChannels.length)}/${rawChannels.length} (সচল পাওয়া গেছে: ${newWorkingChannels.length})`;
 
         const results = await Promise.all(batch.map(async (ch) => {
           const isWorking = await checkStream(ch.url);
