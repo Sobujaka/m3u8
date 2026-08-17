@@ -202,7 +202,7 @@
       }
     }
 
-    // ভিডিও এলিমেন্ট দিয়ে স্ট্রিম চেক করার নতুন ফাংশন
+    // দ্রুত ৩ টি লেভেলে চেক করার ফাংশন (১.৫ সেকেন্ড টাইমআউট)
     function checkStream(url) {
       return new Promise((resolve) => {
         const tempVideo = document.createElement('video');
@@ -212,14 +212,23 @@
           if (!isHandled) {
             isHandled = true;
             tempVideo.src = '';
+            tempVideo.removeAttribute('src');
+            tempVideo.load();
             tempVideo.remove();
           }
         };
 
+        // টাইমআউট কমিয়ে ১.৫ সেকেন্ড করা হয়েছে
         const timeoutId = setTimeout(() => {
           cleanup();
           resolve(false);
-        }, 3000);
+        }, 1500);
+
+        tempVideo.onloadeddata = () => {
+          clearTimeout(timeoutId);
+          cleanup();
+          resolve(true);
+        };
 
         tempVideo.onloadedmetadata = () => {
           clearTimeout(timeoutId);
@@ -238,20 +247,29 @@
       });
     }
 
-    // সচল চ্যানেল ফিল্টার করার মূল ফাংশন
+    // Parallel Batching: একসাথে ১০টি চ্যানেল একই সময়ে চেক হবে
     async function filterAndAppendChannels() {
       const statusDiv = document.getElementById('status');
       statusDiv.style.display = 'block';
       
       const newWorkingChannels = [];
+      const batchSize = 10; // ব্যাচ সাইজ: একসাথে ১০টি চেক হবে
 
-      for (let i = 0; i < rawChannels.length; i++) {
-        statusDiv.innerText = `প্লেয়ারে প্লে যোগ্য চ্যানেল চেক করা হচ্ছে: ${i + 1}/${rawChannels.length} (সচল: ${newWorkingChannels.length})`;
-        
-        const isWorking = await checkStream(rawChannels[i].url);
-        if (isWorking) {
-          newWorkingChannels.push(rawChannels[i]);
-        }
+      for (let i = 0; i < rawChannels.length; i += batchSize) {
+        const batch = rawChannels.slice(i, i + batchSize);
+        statusDiv.innerText = `দ্রুত চেক করা হচ্ছে: ${Math.min(i + batchSize, rawChannels.length)}/${rawChannels.length} (সচল: ${newWorkingChannels.length})`;
+
+        // ১০টি স্ট্রিম একসাথে সমান্তরালে প্রসেস করা হচ্ছে
+        const results = await Promise.all(
+          batch.map(async (ch) => {
+            const isWorking = await checkStream(ch.url);
+            return isWorking ? ch : null;
+          })
+        );
+
+        results.forEach(ch => {
+          if (ch) newWorkingChannels.push(ch);
+        });
       }
 
       channels = channels.concat(newWorkingChannels);
