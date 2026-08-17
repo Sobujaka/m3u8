@@ -48,6 +48,11 @@
     .btn-select-all { background: #f57c00; color: #fff; }
     .btn-select-all:hover { background: #e65100; }
 
+    .channel-counter {
+      background: #00e676; color: #000; padding: 5px 10px; border-radius: 5px;
+      font-size: 13px; font-weight: bold; margin-left: auto;
+    }
+
     .channel-list { flex: 1; overflow-y: auto; background: #121212; border-radius: 5px; padding: 5px; }
     .channel-item-wrapper {
       display: flex; flex-direction: column; background: #252525; margin-bottom: 5px; border-radius: 5px; border: 1px solid transparent;
@@ -101,6 +106,7 @@
         <button class="btn" onclick="moveUp()">Up ▲</button>
         <button class="btn" onclick="moveDown()">Down ▼</button>
         <button class="btn btn-success" onclick="downloadSelected()">Download Selected</button>
+        <span class="channel-counter" id="channelCount">Total Channels: 0</span>
       </div>
 
       <div class="channel-list" id="channelList">
@@ -202,7 +208,6 @@
       }
     }
 
-    // দ্রুত ৩ টি লেভেলে চেক করার ফাংশন (১.৫ সেকেন্ড টাইমআউট)
     function checkStream(url) {
       return new Promise((resolve) => {
         const tempVideo = document.createElement('video');
@@ -218,7 +223,6 @@
           }
         };
 
-        // টাইমআউট কমিয়ে ১.৫ সেকেন্ড করা হয়েছে
         const timeoutId = setTimeout(() => {
           cleanup();
           resolve(false);
@@ -247,21 +251,30 @@
       });
     }
 
-    // Parallel Batching: একসাথে ১০টি চ্যানেল একই সময়ে চেক হবে
     async function filterAndAppendChannels() {
       const statusDiv = document.getElementById('status');
       statusDiv.style.display = 'block';
       
       const newWorkingChannels = [];
-      const batchSize = 10; // ব্যাচ সাইজ: একসাথে ১০টি চেক হবে
+      const batchSize = 10;
+      
+      // বর্তমানের সব লিস্টের URL একটি Set-এ ট্র্যাক রাখা হচ্ছে
+      const existingUrls = new Set(channels.map(ch => ch.url));
 
       for (let i = 0; i < rawChannels.length; i += batchSize) {
         const batch = rawChannels.slice(i, i + batchSize);
         statusDiv.innerText = `দ্রুত চেক করা হচ্ছে: ${Math.min(i + batchSize, rawChannels.length)}/${rawChannels.length} (সচল: ${newWorkingChannels.length})`;
 
-        // ১০টি স্ট্রিম একসাথে সমান্তরালে প্রসেস করা হচ্ছে
         const results = await Promise.all(
           batch.map(async (ch) => {
+            // যদি একই URL আগে এসে থাকে, তবে সরাসরি বাতিল (স্কিপ) হবে
+            if (existingUrls.has(ch.url)) {
+              return null;
+            }
+            
+            // নতুন URL হলে সেট-এ এড করা হবে যেন ওই একই ফাইল বা পরের ফাইলে আবার আসলে বাদ পড়ে
+            existingUrls.add(ch.url);
+
             const isWorking = await checkStream(ch.url);
             return isWorking ? ch : null;
           })
@@ -284,6 +297,9 @@
 
     function renderChannels(searchQuery = '') {
       const listContainer = document.getElementById('channelList');
+      const countDisplay = document.getElementById('channelCount');
+
+      countDisplay.innerText = `Total Channels: ${channels.length}`;
 
       if (channels.length === 0) {
         listContainer.innerHTML = '<p style="text-align: center; color: #888; margin-top: 20px;">কোনো সচল চ্যানেল পাওয়া যায়নি</p>';
