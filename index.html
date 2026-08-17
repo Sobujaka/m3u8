@@ -202,51 +202,61 @@
       }
     }
 
-    // সমান্তরাল (Parallel Batching) চেকিং সিস্টেম
+    // ভিডিও এলিমেন্ট দিয়ে স্ট্রিম চেক করার নতুন ফাংশন
+    function checkStream(url) {
+      return new Promise((resolve) => {
+        const tempVideo = document.createElement('video');
+        let isHandled = false;
+
+        const cleanup = () => {
+          if (!isHandled) {
+            isHandled = true;
+            tempVideo.src = '';
+            tempVideo.remove();
+          }
+        };
+
+        const timeoutId = setTimeout(() => {
+          cleanup();
+          resolve(false);
+        }, 3000);
+
+        tempVideo.onloadedmetadata = () => {
+          clearTimeout(timeoutId);
+          cleanup();
+          resolve(true);
+        };
+
+        tempVideo.onerror = () => {
+          clearTimeout(timeoutId);
+          cleanup();
+          resolve(false);
+        };
+
+        tempVideo.src = url;
+        tempVideo.load();
+      });
+    }
+
+    // সচল চ্যানেল ফিল্টার করার মূল ফাংশন
     async function filterAndAppendChannels() {
       const statusDiv = document.getElementById('status');
       statusDiv.style.display = 'block';
       
       const newWorkingChannels = [];
-      const batchSize = 10; // একসাথে ১০টি চ্যানেল চেক করা হবে
 
-      for (let i = 0; i < rawChannels.length; i += batchSize) {
-        const batch = rawChannels.slice(i, i + batchSize);
-        statusDiv.innerText = `চ্যানেল চেক করা হচ্ছে: ${Math.min(i + batchSize, rawChannels.length)}/${rawChannels.length} (সচল: ${newWorkingChannels.length})`;
-
-        const results = await Promise.all(
-          batch.map(async (ch) => {
-            const isWorking = await checkStream(ch.url);
-            return isWorking ? ch : null;
-          })
-        );
-
-        results.forEach(ch => {
-          if (ch) newWorkingChannels.push(ch);
-        });
+      for (let i = 0; i < rawChannels.length; i++) {
+        statusDiv.innerText = `প্লেয়ারে প্লে যোগ্য চ্যানেল চেক করা হচ্ছে: ${i + 1}/${rawChannels.length} (সচল: ${newWorkingChannels.length})`;
+        
+        const isWorking = await checkStream(rawChannels[i].url);
+        if (isWorking) {
+          newWorkingChannels.push(rawChannels[i]);
+        }
       }
 
       channels = channels.concat(newWorkingChannels);
       statusDiv.style.display = 'none';
       renderChannels();
-    }
-
-    // টাইমআউট কমিয়ে দ্রুত চেক করার ফাংশন
-    function checkStream(url) {
-      return new Promise((resolve) => {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1500); // ১৫০০ms টাইমআউট
-
-        fetch(url, { method: 'HEAD', signal: controller.signal, mode: 'no-cors' })
-          .then(() => {
-            clearTimeout(timeoutId);
-            resolve(true);
-          })
-          .catch(() => {
-            clearTimeout(timeoutId);
-            resolve(false);
-          });
-      });
     }
 
     function filterChannelsByName() {
