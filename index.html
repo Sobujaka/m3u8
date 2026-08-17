@@ -217,88 +217,61 @@
       }
     }
 
-    // নিখুঁত এবং দ্রুত স্ট্রিম চেক করার অ্যাডভান্সড ফাংশন (Dual Method + Hybrid Fallback)
+    // প্লেয়ারের সাথে সরাসরি সামঞ্জস্য রেখে নিখুঁত প্লে-যোগ্যতা নিশ্চিত করার ফাংশন
     function checkStream(url) {
       return new Promise((resolve) => {
-        const controller = new AbortController();
+        const testVideo = document.createElement('video');
+        testVideo.muted = true;
+        testVideo.playsInline = true;
+
+        let hasEnded = false;
+
+        const cleanup = (status) => {
+          if (!hasEnded) {
+            hasEnded = true;
+            clearTimeout(timeoutId);
+            testVideo.pause();
+            testVideo.removeAttribute('src');
+            testVideo.load();
+            testVideo.remove();
+            resolve(status);
+          }
+        };
+
+        // ৪ সেকেন্ড টাইমআউট - প্লে ব্যাক ক্যানপ্লে তথ্য পাওয়ার পর্যাপ্ত সময়
         const timeoutId = setTimeout(() => {
-          controller.abort();
-          checkVideoElement(); // Fetch ফেইল করলে/টাইমআউট হলে ভিডিও এলিমেন্টে সেকেন্ডারি ট্রাই
-        }, 3500);
+          cleanup(false);
+        }, 4000);
 
-        let resolved = false;
+        // স্ট্রিম ফ্রেম বা মেটাডেটা সফলভাবে লোড হলে সত্য ফেরত পাঠাবে
+        testVideo.oncanplay = testVideo.onloadeddata = testVideo.onloadedmetadata = () => {
+          cleanup(true);
+        };
 
-        // ১. দ্রুত HTTP Request চেক (No-Cors Mode)
-        fetch(url, { method: 'GET', signal: controller.signal, mode: 'no-cors' })
-          .then(() => {
-            if (!resolved) {
-              resolved = true;
-              clearTimeout(timeoutId);
-              resolve(true);
-            }
-          })
-          .catch(() => {
-            if (!resolved) {
-              checkVideoElement();
-            }
-          });
+        // এরর ধরা পড়লে (৪০০, ৪০৪, CORS, বা অননুমোদিত ফরম্যাট) চ্যানেলটি বাদ দেওয়া হবে
+        testVideo.onerror = () => {
+          cleanup(false);
+        };
 
-        // ২. ভিডিও এলিমেন্ট চেক (সুনির্দিষ্ট নিশ্চিতকরণের জন্য)
-        function checkVideoElement() {
-          const tempVideo = document.createElement('video');
-          const vTimeout = setTimeout(() => {
-            if (!resolved) {
-              resolved = true;
-              tempVideo.src = '';
-              tempVideo.remove();
-              resolve(false);
-            }
-          }, 4500); // পর্যাপ্ত সময় প্রদান
-
-          tempVideo.onloadeddata = tempVideo.onloadedmetadata = () => {
-            if (!resolved) {
-              resolved = true;
-              clearTimeout(vTimeout);
-              clearTimeout(timeoutId);
-              tempVideo.src = '';
-              tempVideo.remove();
-              resolve(true);
-            }
-          };
-
-          tempVideo.onerror = () => {
-            if (!resolved) {
-              resolved = true;
-              clearTimeout(vTimeout);
-              clearTimeout(timeoutId);
-              tempVideo.src = '';
-              tempVideo.remove();
-              resolve(false);
-            }
-          };
-
-          tempVideo.src = url;
-          tempVideo.load();
-        }
+        // প্লেয়ার টাইপিং
+        testVideo.src = url;
+        testVideo.load();
       });
     }
 
-    // সমান্তরালভাবে (Parallel Batch Processing) চ্যানেল ফিল্টার করার ফাংশন
+    // ফিল্টার প্রসেসিং (১৫ টি চ্যানেল একসাথে চেক করবে যাতে দ্রুত প্লেয়ার ভ্যালিডেশন সম্পন্ন হয়)
     async function filterAndAppendChannels() {
       const statusDiv = document.getElementById('status');
       statusDiv.style.display = 'block';
       
       const newWorkingChannels = [];
-      const batchSize = 10; // একসাথে ১০টি চ্যানেল সমান্তরালে চেক হবে
+      const batchSize = 15;
 
       for (let i = 0; i < rawChannels.length; i += batchSize) {
         const batch = rawChannels.slice(i, i + batchSize);
-        statusDiv.innerText = `চ্যানেল চেক করা হচ্ছে: ${Math.min(i + batchSize, rawChannels.length)}/${rawChannels.length} (সচল: ${newWorkingChannels.length})`;
+        statusDiv.innerText = `প্লেয়ারে প্লে-যোগ্য চ্যানেলগুলো যাচাই করা হচ্ছে: ${Math.min(i + batchSize, rawChannels.length)}/${rawChannels.length} (সচল: ${newWorkingChannels.length})`;
 
         const results = await Promise.all(batch.map(async (ch) => {
-          const alreadyExists = channels.some(c => c.url === ch.url);
-          if (alreadyExists) return null;
-
           const isWorking = await checkStream(ch.url);
           return isWorking ? ch : null;
         }));
@@ -325,7 +298,7 @@
       countDisplay.innerText = channels.length;
 
       if (channels.length === 0) {
-        listContainer.innerHTML = '<p style="text-align: center; color: #888; margin-top: 20px;">কোনো সচল চ্যানেল পাওয়া যায়নি</p>';
+        listContainer.innerHTML = '<p style="text-align: center; color: #888; margin-top: 20px;">কোনো প্লে-যোগ্য সচল চ্যানেল পাওয়া যায়নি</p>';
         return;
       }
 
