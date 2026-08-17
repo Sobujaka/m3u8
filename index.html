@@ -20,7 +20,6 @@
     input[type="url"] { width: 280px; }
     input[type="text"]#searchInput { width: 220px; border-color: #00e676; }
 
-    /* Loading Status Bar */
     #status {
       display: none; background: #263238; color: #80deea; padding: 10px;
       text-align: center; border-radius: 5px; margin-bottom: 15px; font-weight: bold;
@@ -64,7 +63,6 @@
     .group-tag { background: #00e676; color: #000; font-size: 11px; font-weight: bold; padding: 2px 6px; border-radius: 4px; white-space: nowrap; }
     .checkbox { width: 18px; height: 18px; cursor: pointer; }
 
-    /* Edit Box Container */
     .edit-box {
       display: none; gap: 5px; padding: 5px 8px 8px 8px; background: #1a1a1a; border-top: 1px solid #333;
     }
@@ -86,7 +84,6 @@
     <input type="url" id="urlInput" placeholder="M3U URL লিংক পেস্ট করুন...">
     <button class="btn btn-success" onclick="loadFromUrl()">লোড করুন</button>
 
-    <!-- নতুন সার্চ অপশন -->
     <input type="text" id="searchInput" placeholder="চ্যানেল খুঁজুন..." oninput="filterChannelsByName()">
   </div>
 
@@ -174,8 +171,8 @@
       const lines = content.split('\n');
       let currentChannel = null;
 
-      lines.forEach(line => {
-        line = line.trim();
+      for (let i = 0; i < lines.length; i++) {
+        let line = lines[i].trim();
         if (line.startsWith('#EXTINF:')) {
           currentChannel = {};
           
@@ -190,11 +187,7 @@
 
           if (rawTitle.length > 20) {
             currentChannel.title = '';
-            if (titleParts.length > 1) {
-              currentChannel.extinf = titleParts[0] + ',';
-            } else {
-              currentChannel.extinf = line;
-            }
+            currentChannel.extinf = titleParts.length > 1 ? titleParts[0] + ',' : line;
           } else {
             currentChannel.title = rawTitle || 'Unknown Channel';
             currentChannel.extinf = line;
@@ -206,35 +199,43 @@
           rawChannels.push(currentChannel);
           currentChannel = null;
         }
-      });
+      }
     }
 
+    // সমান্তরাল (Parallel Batching) চেকিং সিস্টেম
     async function filterAndAppendChannels() {
       const statusDiv = document.getElementById('status');
       statusDiv.style.display = 'block';
       
       const newWorkingChannels = [];
+      const batchSize = 10; // একসাথে ১০টি চ্যানেল চেক করা হবে
 
-      for (let i = 0; i < rawChannels.length; i++) {
-        const ch = rawChannels[i];
-        statusDiv.innerText = `চ্যানেল চেক করা হচ্ছে: ${i + 1}/${rawChannels.length} (নতুন সচল: ${newWorkingChannels.length})`;
+      for (let i = 0; i < rawChannels.length; i += batchSize) {
+        const batch = rawChannels.slice(i, i + batchSize);
+        statusDiv.innerText = `চ্যানেল চেক করা হচ্ছে: ${Math.min(i + batchSize, rawChannels.length)}/${rawChannels.length} (সচল: ${newWorkingChannels.length})`;
 
-        const isWorking = await checkStream(ch.url);
-        if (isWorking) {
-          newWorkingChannels.push(ch);
-        }
+        const results = await Promise.all(
+          batch.map(async (ch) => {
+            const isWorking = await checkStream(ch.url);
+            return isWorking ? ch : null;
+          })
+        );
+
+        results.forEach(ch => {
+          if (ch) newWorkingChannels.push(ch);
+        });
       }
 
       channels = channels.concat(newWorkingChannels);
-
       statusDiv.style.display = 'none';
       renderChannels();
     }
 
+    // টাইমআউট কমিয়ে দ্রুত চেক করার ফাংশন
     function checkStream(url) {
       return new Promise((resolve) => {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const timeoutId = setTimeout(() => controller.abort(), 1500); // ১৫০০ms টাইমআউট
 
         fetch(url, { method: 'HEAD', signal: controller.signal, mode: 'no-cors' })
           .then(() => {
@@ -248,7 +249,6 @@
       });
     }
 
-    // নতুন নাম অনুযায়ী সার্চ ফাংশন
     function filterChannelsByName() {
       const query = document.getElementById('searchInput').value.toLowerCase().trim();
       renderChannels(query);
@@ -256,7 +256,6 @@
 
     function renderChannels(searchQuery = '') {
       const listContainer = document.getElementById('channelList');
-      listContainer.innerHTML = '';
 
       if (channels.length === 0) {
         listContainer.innerHTML = '<p style="text-align: center; color: #888; margin-top: 20px;">কোনো সচল চ্যানেল পাওয়া যায়নি</p>';
@@ -264,9 +263,10 @@
       }
 
       let visibleCount = 0;
+      const fragment = document.createDocumentFragment();
+      const fallbackLogo = 'https://via.placeholder.com/35?text=TV';
 
       channels.forEach((channel, index) => {
-        // সার্চ ফিল্টারিং লজিক
         if (searchQuery && !channel.title.toLowerCase().includes(searchQuery)) {
           return;
         }
@@ -276,7 +276,6 @@
         wrapper.className = 'channel-item-wrapper';
         wrapper.id = `channel-wrapper-${index}`;
 
-        const fallbackLogo = 'https://via.placeholder.com/35?text=TV';
         const groupTagHtml = channel.group ? `<span class="group-tag" id="group-tag-${index}">${channel.group}</span>` : `<span class="group-tag" id="group-tag-${index}" style="display:none;"></span>`;
 
         wrapper.innerHTML = `
@@ -303,11 +302,14 @@
           }
         };
 
-        listContainer.appendChild(wrapper);
+        fragment.appendChild(wrapper);
       });
 
+      listContainer.innerHTML = '';
       if (visibleCount === 0 && searchQuery) {
         listContainer.innerHTML = '<p style="text-align: center; color: #888; margin-top: 20px;">কোনো চ্যানেল খুঁজে পাওয়া যায়নি</p>';
+      } else {
+        listContainer.appendChild(fragment);
       }
 
       updateSelectAllButtonText();
