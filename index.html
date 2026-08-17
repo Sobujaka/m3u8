@@ -14,10 +14,11 @@
       background: #1e1e1e; padding: 15px; border-radius: 8px; margin-bottom: 15px;
       display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap;
     }
-    input[type="file"], input[type="url"] { 
+    input[type="file"], input[type="url"], input[type="text"] { 
       background: #2a2a2a; color: #fff; padding: 8px 12px; border-radius: 5px; border: 1px solid #444; font-size: 14px;
     }
-    input[type="url"] { width: 300px; }
+    input[type="url"] { width: 280px; }
+    input[type="text"]#searchInput { width: 220px; border-color: #00e676; }
 
     /* Loading Status Bar */
     #status {
@@ -84,6 +85,9 @@
 
     <input type="url" id="urlInput" placeholder="M3U URL লিংক পেস্ট করুন...">
     <button class="btn btn-success" onclick="loadFromUrl()">লোড করুন</button>
+
+    <!-- নতুন সার্চ অপশন -->
+    <input type="text" id="searchInput" placeholder="চ্যানেল খুঁজুন..." oninput="filterChannelsByName()">
   </div>
 
   <div id="status">চ্যানেল ফিল্টার করা হচ্ছে, অনুগ্রহ করে অপেক্ষা করুন...</div>
@@ -184,10 +188,8 @@
           const titleParts = line.split(',');
           let rawTitle = titleParts.length > 1 ? titleParts.slice(1).join(',').trim() : '';
 
-          // নাম ২০ ক্যারেক্টারের বেশি হলে নাম রিমুভ (খালি) করা হবে
           if (rawTitle.length > 20) {
             currentChannel.title = '';
-            // extinf লাইনের থেকেও নাম সরিয়ে নেওয়া হচ্ছে
             if (titleParts.length > 1) {
               currentChannel.extinf = titleParts[0] + ',';
             } else {
@@ -246,7 +248,13 @@
       });
     }
 
-    function renderChannels() {
+    // নতুন নাম অনুযায়ী সার্চ ফাংশন
+    function filterChannelsByName() {
+      const query = document.getElementById('searchInput').value.toLowerCase().trim();
+      renderChannels(query);
+    }
+
+    function renderChannels(searchQuery = '') {
       const listContainer = document.getElementById('channelList');
       listContainer.innerHTML = '';
 
@@ -255,7 +263,15 @@
         return;
       }
 
+      let visibleCount = 0;
+
       channels.forEach((channel, index) => {
+        // সার্চ ফিল্টারিং লজিক
+        if (searchQuery && !channel.title.toLowerCase().includes(searchQuery)) {
+          return;
+        }
+
+        visibleCount++;
         const wrapper = document.createElement('div');
         wrapper.className = 'channel-item-wrapper';
         wrapper.id = `channel-wrapper-${index}`;
@@ -289,6 +305,10 @@
 
         listContainer.appendChild(wrapper);
       });
+
+      if (visibleCount === 0 && searchQuery) {
+        listContainer.innerHTML = '<p style="text-align: center; color: #888; margin-top: 20px;">কোনো চ্যানেল খুঁজে পাওয়া যায়নি</p>';
+      }
 
       updateSelectAllButtonText();
     }
@@ -412,7 +432,9 @@
 
       isAllSelected = !isAllSelected;
       channels.forEach(ch => ch.selected = isAllSelected);
-      renderChannels();
+      
+      const currentQuery = document.getElementById('searchInput').value.toLowerCase().trim();
+      renderChannels(currentQuery);
     }
 
     function updateSelectAllButtonText() {
@@ -426,7 +448,8 @@
 
     function deleteSelected() {
       channels = channels.filter(ch => !ch.selected);
-      renderChannels();
+      const currentQuery = document.getElementById('searchInput').value.toLowerCase().trim();
+      renderChannels(currentQuery);
     }
 
     function moveUp() {
@@ -435,7 +458,8 @@
           [channels[i], channels[i - 1]] = [channels[i - 1], channels[i]];
         }
       }
-      renderChannels();
+      const currentQuery = document.getElementById('searchInput').value.toLowerCase().trim();
+      renderChannels(currentQuery);
     }
 
     function moveDown() {
@@ -444,7 +468,8 @@
           [channels[i], channels[i + 1]] = [channels[i + 1], channels[i]];
         }
       }
-      renderChannels();
+      const currentQuery = document.getElementById('searchInput').value.toLowerCase().trim();
+      renderChannels(currentQuery);
     }
 
     function downloadSelected() {
