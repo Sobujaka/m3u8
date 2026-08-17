@@ -48,9 +48,11 @@
     .btn-select-all { background: #f57c00; color: #fff; }
     .btn-select-all:hover { background: #e65100; }
 
-    .channel-counter {
-      background: #00e676; color: #000; padding: 5px 10px; border-radius: 5px;
-      font-size: 13px; font-weight: bold; margin-left: auto;
+    .channel-count {
+      color: #00e676;
+      font-weight: bold;
+      font-size: 14px;
+      margin-left: 2px;
     }
 
     .channel-list { flex: 1; overflow-y: auto; background: #121212; border-radius: 5px; padding: 5px; }
@@ -106,7 +108,7 @@
         <button class="btn" onclick="moveUp()">Up ▲</button>
         <button class="btn" onclick="moveDown()">Down ▼</button>
         <button class="btn btn-success" onclick="downloadSelected()">Download Selected</button>
-        <span class="channel-counter" id="channelCount">Total Channels: 0</span>
+        <span class="channel-count" id="channelCountDisplay">0</span>
       </div>
 
       <div class="channel-list" id="channelList">
@@ -202,86 +204,107 @@
           currentChannel.selected = false;
         } else if (line && !line.startsWith('#') && currentChannel) {
           currentChannel.url = line;
-          rawChannels.push(currentChannel);
+
+          const isDuplicateInRaw = rawChannels.some(ch => ch.url === currentChannel.url);
+          const isDuplicateInMain = channels.some(ch => ch.url === currentChannel.url);
+
+          if (!isDuplicateInRaw && !isDuplicateInMain) {
+            rawChannels.push(currentChannel);
+          }
+
           currentChannel = null;
         }
       }
     }
 
+    // নিখুঁত এবং দ্রুত স্ট্রিম চেক করার অ্যাডভান্সড ফাংশন (Dual Method + Hybrid Fallback)
     function checkStream(url) {
       return new Promise((resolve) => {
-        const tempVideo = document.createElement('video');
-        let isHandled = false;
-
-        const cleanup = () => {
-          if (!isHandled) {
-            isHandled = true;
-            tempVideo.src = '';
-            tempVideo.removeAttribute('src');
-            tempVideo.load();
-            tempVideo.remove();
-          }
-        };
-
+        const controller = new AbortController();
         const timeoutId = setTimeout(() => {
-          cleanup();
-          resolve(false);
-        }, 1500);
+          controller.abort();
+          checkVideoElement(); // Fetch ফেইল করলে/টাইমআউট হলে ভিডিও এলিমেন্টে সেকেন্ডারি ট্রাই
+        }, 3500);
 
-        tempVideo.onloadeddata = () => {
-          clearTimeout(timeoutId);
-          cleanup();
-          resolve(true);
-        };
+        let resolved = false;
 
-        tempVideo.onloadedmetadata = () => {
-          clearTimeout(timeoutId);
-          cleanup();
-          resolve(true);
-        };
+        // ১. দ্রুত HTTP Request চেক (No-Cors Mode)
+        fetch(url, { method: 'GET', signal: controller.signal, mode: 'no-cors' })
+          .then(() => {
+            if (!resolved) {
+              resolved = true;
+              clearTimeout(timeoutId);
+              resolve(true);
+            }
+          })
+          .catch(() => {
+            if (!resolved) {
+              checkVideoElement();
+            }
+          });
 
-        tempVideo.onerror = () => {
-          clearTimeout(timeoutId);
-          cleanup();
-          resolve(false);
-        };
+        // ২. ভিডিও এলিমেন্ট চেক (সুনির্দিষ্ট নিশ্চিতকরণের জন্য)
+        function checkVideoElement() {
+          const tempVideo = document.createElement('video');
+          const vTimeout = setTimeout(() => {
+            if (!resolved) {
+              resolved = true;
+              tempVideo.src = '';
+              tempVideo.remove();
+              resolve(false);
+            }
+          }, 4500); // পর্যাপ্ত সময় প্রদান
 
-        tempVideo.src = url;
-        tempVideo.load();
+          tempVideo.onloadeddata = tempVideo.onloadedmetadata = () => {
+            if (!resolved) {
+              resolved = true;
+              clearTimeout(vTimeout);
+              clearTimeout(timeoutId);
+              tempVideo.src = '';
+              tempVideo.remove();
+              resolve(true);
+            }
+          };
+
+          tempVideo.onerror = () => {
+            if (!resolved) {
+              resolved = true;
+              clearTimeout(vTimeout);
+              clearTimeout(timeoutId);
+              tempVideo.src = '';
+              tempVideo.remove();
+              resolve(false);
+            }
+          };
+
+          tempVideo.src = url;
+          tempVideo.load();
+        }
       });
     }
 
+    // সমান্তরালভাবে (Parallel Batch Processing) চ্যানেল ফিল্টার করার ফাংশন
     async function filterAndAppendChannels() {
       const statusDiv = document.getElementById('status');
       statusDiv.style.display = 'block';
       
       const newWorkingChannels = [];
-      const batchSize = 10;
-      
-      // বর্তমানের সব লিস্টের URL একটি Set-এ ট্র্যাক রাখা হচ্ছে
-      const existingUrls = new Set(channels.map(ch => ch.url));
+      const batchSize = 10; // একসাথে ১০টি চ্যানেল সমান্তরালে চেক হবে
 
       for (let i = 0; i < rawChannels.length; i += batchSize) {
         const batch = rawChannels.slice(i, i + batchSize);
-        statusDiv.innerText = `দ্রুত চেক করা হচ্ছে: ${Math.min(i + batchSize, rawChannels.length)}/${rawChannels.length} (সচল: ${newWorkingChannels.length})`;
+        statusDiv.innerText = `চ্যানেল চেক করা হচ্ছে: ${Math.min(i + batchSize, rawChannels.length)}/${rawChannels.length} (সচল: ${newWorkingChannels.length})`;
 
-        const results = await Promise.all(
-          batch.map(async (ch) => {
-            // যদি একই URL আগে এসে থাকে, তবে সরাসরি বাতিল (স্কিপ) হবে
-            if (existingUrls.has(ch.url)) {
-              return null;
-            }
-            
-            // নতুন URL হলে সেট-এ এড করা হবে যেন ওই একই ফাইল বা পরের ফাইলে আবার আসলে বাদ পড়ে
-            existingUrls.add(ch.url);
+        const results = await Promise.all(batch.map(async (ch) => {
+          const alreadyExists = channels.some(c => c.url === ch.url);
+          if (alreadyExists) return null;
 
-            const isWorking = await checkStream(ch.url);
-            return isWorking ? ch : null;
-          })
-        );
+          const isWorking = await checkStream(ch.url);
+          return isWorking ? ch : null;
+        }));
 
-        results.forEach(ch => {
-          if (ch) newWorkingChannels.push(ch);
+        results.forEach(res => {
+          if (res) newWorkingChannels.push(res);
         });
       }
 
@@ -297,9 +320,9 @@
 
     function renderChannels(searchQuery = '') {
       const listContainer = document.getElementById('channelList');
-      const countDisplay = document.getElementById('channelCount');
+      const countDisplay = document.getElementById('channelCountDisplay');
 
-      countDisplay.innerText = `Total Channels: ${channels.length}`;
+      countDisplay.innerText = channels.length;
 
       if (channels.length === 0) {
         listContainer.innerHTML = '<p style="text-align: center; color: #888; margin-top: 20px;">কোনো সচল চ্যানেল পাওয়া যায়নি</p>';
