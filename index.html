@@ -188,12 +188,15 @@
           const logoMatch = line.match(/tvg-logo="([^"]*)"/);
           currentChannel.logo = logoMatch ? logoMatch[1] : '';
 
+          // Group ২০ অক্ষরের বেশি হলে খালি থাকবে
           const groupMatch = line.match(/group-title="([^"]*)"/);
-          currentChannel.group = groupMatch ? groupMatch[1] : '';
+          let rawGroup = groupMatch ? groupMatch[1] : '';
+          currentChannel.group = rawGroup.length > 20 ? '' : rawGroup;
 
           const titleParts = line.split(',');
           let rawTitle = titleParts.length > 1 ? titleParts.slice(1).join(',').trim() : '';
 
+          // Title ২০ অক্ষরের বেশি হলে খালি থাকবে
           if (rawTitle.length > 20) {
             currentChannel.title = '';
             currentChannel.extinf = titleParts.length > 1 ? titleParts[0] + ',' : line;
@@ -218,7 +221,6 @@
       }
     }
 
-    // ১০০% সঠিকতার সাথে m3u8 স্ট্রিম চেক করার অ্যাডভান্সড ইঞ্জেকশন
     function checkStream(url) {
       return new Promise((resolve) => {
         let isHandled = false;
@@ -228,9 +230,8 @@
             if (hls) hls.destroy();
             resolve(false);
           }
-        }, 5000); // পর্যাপ্ত ৬ সেকেন্ড সময়
+        }, 5000);
 
-        // ১. HLS.js সাপোর্টেড ব্রাউজারের জন্য
         if (Hls.isSupported() && url.includes('.m3u8')) {
           var hls = new Hls({
             manifestLoadingTimeOut: 4500,
@@ -258,7 +259,6 @@
             }
           });
         } else {
-          // ২. সাধারন MP4 বা নেটিভ সাফারি HLS এর জন্য ব্যাকআপ টেস্ট
           const tempVideo = document.createElement('video');
           tempVideo.muted = true;
 
@@ -288,13 +288,12 @@
       });
     }
 
-    // নিরাপদ কিউ ভিত্তিক চেকিং (একসাথে ৩টি করে সুনির্দিষ্টভাবে চেক হবে যাতে মিস না হয়)
     async function filterAndAppendChannels() {
       const statusDiv = document.getElementById('status');
       statusDiv.style.display = 'block';
       
       const newWorkingChannels = [];
-      const batchSize = 3; // ব্যাচ সাইজ কম রেখে ১০০% একুরেসি নিশ্চিত করা হলো
+      const batchSize = 3;
 
       for (let i = 0; i < rawChannels.length; i += batchSize) {
         const batch = rawChannels.slice(i, i + batchSize);
