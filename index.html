@@ -321,12 +321,10 @@
 
     function renderChannels(searchQuery = '') {
       const listContainer = document.getElementById('channelList');
-      const countDisplay = document.getElementById('channelCountDisplay');
-
-      countDisplay.innerText = channels.length;
 
       if (channels.length === 0) {
         listContainer.innerHTML = '<p style="text-align: center; color: #888; margin-top: 20px;">কোনো প্লে-যোগ্য সচল চ্যানেল পাওয়া যায়নি</p>';
+        updateSelectAllButtonText();
         return;
       }
 
@@ -509,9 +507,17 @@
 
     function updateSelectAllButtonText() {
       const btn = document.getElementById('selectAllBtn');
+      const countDisplay = document.getElementById('channelCountDisplay');
+      
+      const selectedCount = channels.filter(ch => ch.selected).length;
+      
+      if (countDisplay) {
+        countDisplay.innerText = `${channels.length} (${selectedCount})`;
+      }
+
       if (!btn) return;
       
-      const allSelected = channels.length > 0 && channels.every(ch => ch.selected);
+      const allSelected = channels.length > 0 && selectedCount === channels.length;
       isAllSelected = allSelected;
       btn.innerText = allSelected ? 'Deselect All' : 'Select All';
     }
