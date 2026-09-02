@@ -1,1 +1,1 @@
-# m3u8test
+https://sobujaka.github.io/m3u8/
