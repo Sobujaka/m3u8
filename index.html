@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>M3U Auto-Detecting Editor</title>
+  <title>WEB-XBD STREAM - M3U Auto-Detecting Editor</title>
   <link href="https://vjs.zencdn.net/7.20.3/video-js.css" rel="stylesheet" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -47,6 +47,8 @@
     .btn-group:hover { background: #880e4f; }
     .btn-select-all { background: #f57c00; color: #fff; }
     .btn-select-all:hover { background: #e65100; }
+    .btn-show { background: #ff9800; color: #000; }
+    .btn-show:hover { background: #fb8c00; }
 
     .channel-count {
       color: #00e676;
@@ -65,9 +67,17 @@
     }
     .channel-item:hover { background: rgba(255, 255, 255, 0.05); }
     .channel-logo { width: 35px; height: 35px; object-fit: contain; background: #000; border-radius: 4px; }
-    .channel-title-container { flex: 1; display: flex; align-items: center; gap: 8px; overflow: hidden; }
+    .channel-title-container { flex: 1; display: flex; align-items: center; gap: 8px; overflow: hidden; flex-wrap: wrap; }
     .channel-name { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .group-tag { background: #00e676; color: #000; font-size: 11px; font-weight: bold; padding: 2px 6px; border-radius: 4px; white-space: nowrap; }
+    
+    /* M3U লিংক ডিসপ্লে স্টাইল */
+    .m3u-link-display {
+      display: none; width: 100%; margin-top: 5px; background: #111; color: #00e676; 
+      padding: 6px 8px; border-radius: 4px; font-size: 12px; font-family: monospace; 
+      word-break: break-all; border: 1px dashed #00e676;
+    }
+
     .checkbox { width: 18px; height: 18px; cursor: pointer; }
 
     .edit-box {
@@ -80,7 +90,7 @@
 </head>
 <body>
 
-  <h2>M3U Auto-Detecting Playlist Editor</h2>
+  <h2>WEB-XBD STREAM - M3U Auto-Detecting Editor</h2>
 
   <div class="upload-container">
     <label>M3U ফাইল সিলেক্ট করুন: </label>
@@ -188,7 +198,6 @@
           const logoMatch = line.match(/tvg-logo="([^"]*)"/);
           currentChannel.logo = logoMatch ? logoMatch[1] : '';
 
-          // Group ২০ অক্ষরের বেশি হলে খালি থাকবে
           const groupMatch = line.match(/group-title="([^"]*)"/);
           let rawGroup = groupMatch ? groupMatch[1] : '';
           currentChannel.group = rawGroup.length > 20 ? '' : rawGroup;
@@ -196,7 +205,6 @@
           const titleParts = line.split(',');
           let rawTitle = titleParts.length > 1 ? titleParts.slice(1).join(',').trim() : '';
 
-          // Title ২০ অক্ষরের বেশি হলে খালি থাকবে
           if (rawTitle.length > 20) {
             currentChannel.title = '';
             currentChannel.extinf = titleParts.length > 1 ? titleParts[0] + ',' : line;
@@ -349,11 +357,13 @@
             <button class="btn btn-edit" onclick="toggleEditBox(event, ${index}, 'image')">Edit</button>
             <button class="btn btn-name" onclick="toggleEditBox(event, ${index}, 'name')">Name</button>
             <button class="btn btn-group" onclick="toggleEditBox(event, ${index}, 'group')">Group</button>
+            <button class="btn btn-show" id="show-btn-${index}" onclick="toggleM3uLink(event, ${index})">Show</button>
             <input type="checkbox" class="checkbox" ${channel.selected ? 'checked' : ''} onclick="toggleSelect(event, ${index})">
             <img src="${channel.logo || fallbackLogo}" class="channel-logo" id="logo-img-${index}" onerror="this.src='${fallbackLogo}'">
             <div class="channel-title-container">
               <span class="channel-name" id="channel-name-${index}">${channel.title}</span>
               ${groupTagHtml}
+              <div class="m3u-link-display" id="m3u-link-display-${index}">${channel.url}</div>
             </div>
           </div>
           <div class="edit-box" id="edit-box-${index}">
@@ -381,6 +391,23 @@
       updateSelectAllButtonText();
     }
 
+    // Show / Hide M3U Link Function
+    function toggleM3uLink(event, index) {
+      event.stopPropagation();
+      const linkDiv = document.getElementById(`m3u-link-display-${index}`);
+      const showBtn = document.getElementById(`show-btn-${index}`);
+
+      if (linkDiv.style.display === 'block') {
+        linkDiv.style.display = 'none';
+        showBtn.innerText = 'Show';
+        showBtn.style.background = '#ff9800';
+      } else {
+        linkDiv.style.display = 'block';
+        showBtn.innerText = 'Hide';
+        showBtn.style.background = '#d32f2f';
+      }
+    }
+
     function toggleEditBox(event, index, mode) {
       event.stopPropagation();
       const editBox = document.getElementById(`edit-box-${index}`);
@@ -399,7 +426,7 @@
       if (mode === 'image') {
         input.placeholder = 'নতুন ইমেজের লিংক দিন...';
         saveBtn.onclick = (e) => saveLogo(e, index);
-      } else if (mode === 'name') {
+      } else importName: if (mode === 'name') {
         input.placeholder = 'নতুন চ্যানেলের নাম দিন...';
         saveBtn.onclick = (e) => saveName(e, index);
       } else if (mode === 'group') {
@@ -540,7 +567,7 @@
 
     function moveDown() {
       for (let i = channels.length - 2; i >= 0; i--) {
-        if (channels[i].selected && !channels[i + 1].selected) {
+        if (channels[i].selected &&-channels[i + 1].selected) {
           [channels[i], channels[i + 1]] = [channels[i + 1], channels[i]];
         }
       }
